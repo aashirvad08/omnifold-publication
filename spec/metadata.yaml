@@ -1,0 +1,544 @@
+format_version: '0.1'
+dataset:
+  name: OmniFold pseudodata example
+  experiment: ATLAS-like simulation
+  description: Example OmniFold event-level observables and reweighting outputs for pseudodata studies.
+  schema_version: '1.0'
+  provenance_note: 'The local data/*.h5 files are a reduced release version, not the exact files behind
+    the saved outputs of the public sm-z-jets-omnifold-2024 notebooks: same event counts (418014 nominal),
+    but 200 columns vs 276 (150 stored replica weights vs ~226) and different weight content (nEff of
+    weights_nominal 213024 vs 197876 printed; sum 1809.46 fb vs 1808.34 fb printed). Inclusive NP variations
+    agree with the saved notebook outputs to <= 0.02 percentage points; tail regions (pT_ll > 500 GeV)
+    to <= 0.26. See docs/data_provenance.md (verified 2026-07-19).'
+generation:
+  nominal_generator: MG5 (nominal sample, analysis-specific setup not documented in file)
+  alternative_generators:
+  - Sherpa
+  alternative_samples:
+  - nonDY
+files:
+  nominal:
+    filename: multifold.h5
+    path: data/multifold.h5
+    event_count: 418014
+  systematics:
+  - filename: multifold_sherpa.h5
+    path: data/multifold_sherpa.h5
+    event_count: 326430
+    note: Alternative-generator variation with reduced weight families.
+  - filename: multifold_nonDY.h5
+    path: data/multifold_nonDY.h5
+    event_count: 433397
+    note: Alternative sample with nominal-only weighting.
+observables:
+- name: pT_ll
+  description: Transverse momentum of dilepton system
+  units: GeV
+  binning:
+    official:
+    - 200.0
+    - 230.0
+    - 300.0
+    - 450.0
+    - 600.0
+    - 1000.0
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+- name: pT_l1
+  description: Leading lepton transverse momentum
+  units: GeV
+  binning:
+    official:
+    - 25.0
+    - 125.0
+    - 200.0
+    - 300.0
+    - 400.0
+    - 500.0
+    - 800.0
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+- name: pT_l2
+  description: Subleading lepton transverse momentum
+  units: GeV
+  binning:
+    official:
+    - 25.0
+    - 50.0
+    - 75.0
+    - 100.0
+    - 150.0
+    - 200.0
+    - 400.0
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+- name: eta_l1
+  description: Leading lepton pseudorapidity
+  units: '1'
+  binning:
+    official:
+    - -2.5
+    - -2.0
+    - -1.5
+    - -1.0
+    - -0.75
+    - -0.5
+    - -0.25
+    - 0.0
+    - 0.25
+    - 0.5
+    - 0.75
+    - 1.0
+    - 1.5
+    - 2.0
+    - 2.5
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+- name: eta_l2
+  description: Subleading lepton pseudorapidity
+  units: '1'
+  binning:
+    official:
+    - -2.5
+    - -2.0
+    - -1.5
+    - -1.0
+    - -0.75
+    - -0.5
+    - -0.25
+    - 0.0
+    - 0.25
+    - 0.5
+    - 0.75
+    - 1.0
+    - 1.5
+    - 2.0
+    - 2.5
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+- name: phi_l1
+  description: Leading lepton azimuth
+  units: rad
+  binning:
+    official:
+    - -3.1416026536
+    - -2.8
+    - -2.4
+    - -2.0
+    - -1.6
+    - -1.2
+    - -0.8
+    - -0.4
+    - 0.0
+    - 0.4
+    - 0.8
+    - 1.2
+    - 1.6
+    - 2.0
+    - 2.4
+    - 2.8
+    - 3.1416026536
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+- name: phi_l2
+  description: Subleading lepton azimuth
+  units: rad
+  binning:
+    official:
+    - -3.1416026536
+    - -2.8
+    - -2.4
+    - -2.0
+    - -1.6
+    - -1.2
+    - -0.8
+    - -0.4
+    - 0.0
+    - 0.4
+    - 0.8
+    - 1.2
+    - 1.6
+    - 2.0
+    - 2.4
+    - 2.8
+    - 3.1416026536
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+- name: y_ll
+  description: Rapidity of dilepton system
+  units: '1'
+  binning:
+    official:
+    - -2.5
+    - -2.0
+    - -1.5
+    - -1.0
+    - -0.75
+    - -0.5
+    - -0.25
+    - 0.0
+    - 0.25
+    - 0.5
+    - 0.75
+    - 1.0
+    - 1.5
+    - 2.0
+    - 2.5
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+- name: pT_trackj1
+  description: Leading track-jet transverse momentum
+  units: GeV
+  binning:
+    official:
+    - 5.0
+    - 50.0
+    - 100.0
+    - 150.0
+    - 200.0
+    - 300.0
+    - 1000.0
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj1 > 5
+- name: y_trackj1
+  description: Leading track-jet rapidity
+  units: '1'
+  binning:
+    official:
+    - -2.5
+    - -2.0
+    - -1.75
+    - -1.5
+    - -1.25
+    - -1.0
+    - -0.75
+    - -0.5
+    - -0.25
+    - 0.0
+    - 0.25
+    - 0.5
+    - 0.75
+    - 1.0
+    - 1.25
+    - 1.5
+    - 1.75
+    - 2.0
+    - 2.5
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj1 > 5
+- name: phi_trackj1
+  description: Leading track-jet azimuth
+  units: rad
+  binning:
+    official:
+    - -3.1416026536
+    - -2.8
+    - -2.4
+    - -2.0
+    - -1.6
+    - -1.2
+    - -0.8
+    - -0.4
+    - 0.0
+    - 0.4
+    - 0.8
+    - 1.2
+    - 1.6
+    - 2.0
+    - 2.4
+    - 2.8
+    - 3.1416026536
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj1 > 5
+- name: m_trackj1
+  description: Leading track-jet mass
+  units: GeV
+  binning:
+    official:
+    - 0.0
+    - 8.0
+    - 16.0
+    - 24.0
+    - 32.0
+    - 42.0
+    - 70.0
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj1 > 5
+- name: tau1_trackj1
+  description: Leading track-jet N-subjettiness tau1
+  units: '1'
+  binning:
+    official:
+    - 0.0
+    - 0.05
+    - 0.1
+    - 0.17
+    - 0.25
+    - 0.35
+    - 0.4
+    - 0.9
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj1 > 5
+- name: tau2_trackj1
+  description: Leading track-jet N-subjettiness tau2
+  units: '1'
+  binning:
+    official:
+    - 0.0
+    - 0.025
+    - 0.05
+    - 0.08
+    - 0.12
+    - 0.17
+    - 0.2
+    - 0.5
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj1 > 5
+- name: tau3_trackj1
+  description: Leading track-jet N-subjettiness tau3
+  units: '1'
+  binning:
+    official:
+    - 0.0
+    - 0.025
+    - 0.05
+    - 0.1
+    - 0.3
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj1 > 5
+- name: pT_trackj2
+  description: Subleading track-jet transverse momentum
+  units: GeV
+  binning:
+    official:
+    - 5.0
+    - 25.0
+    - 50.0
+    - 100.0
+    - 500.0
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj2 > 5
+- name: y_trackj2
+  description: Subleading track-jet rapidity
+  units: '1'
+  binning:
+    official:
+    - -2.5
+    - -2.0
+    - -1.5
+    - -1.0
+    - -0.5
+    - 0.0
+    - 0.5
+    - 1.0
+    - 1.5
+    - 2.0
+    - 2.5
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj2 > 5
+- name: phi_trackj2
+  description: Subleading track-jet azimuth
+  units: rad
+  binning:
+    official:
+    - -3.1416026536
+    - -2.8
+    - -2.4
+    - -2.0
+    - -1.6
+    - -1.2
+    - -0.8
+    - -0.4
+    - 0.0
+    - 0.4
+    - 0.8
+    - 1.2
+    - 1.6
+    - 2.0
+    - 2.4
+    - 2.8
+    - 3.1416026536
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj2 > 5
+- name: m_trackj2
+  description: Subleading track-jet mass
+  units: GeV
+  binning:
+    official:
+    - 0.0
+    - 5.0
+    - 10.0
+    - 20.0
+    - 40.0
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj2 > 5
+- name: tau1_trackj2
+  description: Subleading track-jet N-subjettiness tau1
+  units: '1'
+  binning:
+    official:
+    - 0.0
+    - 0.1
+    - 0.2
+    - 0.35
+    - 0.5
+    - 0.9
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj2 > 5
+- name: tau2_trackj2
+  description: Subleading track-jet N-subjettiness tau2
+  units: '1'
+  binning:
+    official:
+    - 0.0
+    - 0.025
+    - 0.1
+    - 0.17
+    - 0.25
+    - 0.5
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj2 > 5
+- name: tau3_trackj2
+  description: Subleading track-jet N-subjettiness tau3
+  units: '1'
+  binning:
+    official:
+    - 0.0
+    - 0.025
+    - 0.08
+    - 0.14
+    - 0.3
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj2 > 5
+- name: Ntracks_trackj1
+  description: Track multiplicity in leading track-jet
+  units: count
+  binning:
+    official:
+    - 0.5
+    - 6.5
+    - 10.5
+    - 14.5
+    - 19.5
+    - 25.5
+    - 39.5
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj1 > 5
+- name: Ntracks_trackj2
+  description: Track multiplicity in subleading track-jet
+  units: count
+  binning:
+    official:
+    - 0.5
+    - 3.5
+    - 7.5
+    - 11.5
+    - 15.5
+    - 34.5
+    provenance: IBU comparison binning (multifold_util.py ibu_bins)
+  selection: pT_trackj2 > 5
+- name: tau21
+  description: N-subjettiness ratio tau2/tau1 of the leading track jet
+  units: ''
+  selection: pT_trackj1 > 5
+  derived_from:
+  - tau1_trackj1
+  - tau2_trackj1
+- name: phi_ll
+  description: Azimuthal angle of the dilepton system
+  units: rad
+  derived_from:
+  - pT_l1
+  - eta_l1
+  - phi_l1
+  - pT_l2
+  - eta_l2
+  - phi_l2
+  binning:
+    official:
+    - -3.1416026536
+    - -2.8
+    - -2.4
+    - -2.0
+    - -1.6
+    - -1.2
+    - -0.8
+    - -0.4
+    - 0.0
+    - 0.4
+    - 0.8
+    - 1.2
+    - 1.6
+    - 2.0
+    - 2.4
+    - 2.8
+    - 3.1416026536
+    provenance: same convention as measured phi observables
+- name: dR_ll
+  description: Rapidity-phi distance between the dilepton system and the leading track jet
+  units: ''
+  selection: pT_trackj1 > 5
+  derived_from:
+  - pT_l1
+  - eta_l1
+  - phi_l1
+  - pT_l2
+  - eta_l2
+  - phi_l2
+  - pT_trackj1
+  - y_trackj1
+  - phi_trackj1
+weights:
+  nominal: weights_nominal
+  base_mc_weight: weight_mc
+  bootstrap_prefix: weights_bootstrap_mc
+  ensemble_prefix: weights_ensemble
+  data_bootstrap_prefix: weights_bootstrap_data
+  additional_families:
+  - weights_pileup
+  - weights_muEff*
+  - weights_muCal*
+  - weights_track*
+  - weights_theory*
+  - weights_topBackground
+  - weights_lumi
+  notes:
+  - Not all families exist in every file.
+  - multifold_nonDY.h5 provides only weight_mc and weights_nominal.
+  - Entries marked with * are prefix patterns, not literal column names.
+systematics:
+  expected_families:
+  - name: ensemble
+    pattern: weights_ensemble_*
+    type: model ensemble
+    combination: compare each replica with the nominal weight
+  - name: bootstrap_mc
+    pattern: weights_bootstrap_mc_*
+    type: MC statistical bootstrap
+    combination: spread across replicas
+  - name: bootstrap_data
+    pattern: weights_bootstrap_data_*
+    type: data statistical bootstrap
+    combination: spread across replicas
+iterations:
+  supported_steps:
+  - step1
+  - step2
+  note: Iteration weights should be stored with explicit iteration index and step metadata when available.
+normalization:
+  luminosity: not stored in file
+  cross_section: not stored in file
+  event_weights_normalized: true
+  note: 'weight_mc is present in all files and likely encodes the MC generator weight including cross-section
+    and luminosity scaling. However, the absolute normalization inputs (integrated luminosity and cross-section)
+    are not stored in-file and must be taken from the analysis configuration.
+
+    '
+event_selection:
+  description: not documented in files
+  inferred_phase_space: 'Based on observable content (pT_ll, track-jet kinematics, lepton pT/eta), the
+    selection appears consistent with a Z+jets fiducial region requiring two leptons and at least one
+    track-jet. Exact cut values are not stored.
+
+    '
+training:
+  algorithm: OmniFold
+  iterations: unknown
+  architecture: unknown
+  note: Detailed training logs and hyperparameters are not included in these files.
+usage_notes:
+- Apply event weights to observables to compute unfolded distributions.
+- Use nominal weight for central values and replica families for uncertainty propagation.
+- Systematic variations are stored in alternative files and may have reduced weight availability.

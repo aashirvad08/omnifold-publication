@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnifold-publication"
+version = "0.1.0"
+description = "Research-oriented utilities and documentation for preparing OmniFold weight outputs for publication and downstream reuse."
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Aashirvad"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+keywords = ["OmniFold", "HEP", "unfolding", "physics", "systematics"]
+# Hard dependencies: importing omnifold_publication pulls in closure (scipy),
+# comparison (matplotlib) and derived_observables (vector), so none of these
+# can be optional here.
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyarrow>=15.0",
+    "pydantic>=2.0",
+    "PyYAML>=6.0",
+    "tables>=3.9",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "vector>=1.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "hepdata-validator>=0.9", "ruff>=0.5", "mypy>=1.0"]
+sources = [
+    "fsspec[http]>=2023.1.0",
+    "requests>=2.28",
+]
+
+[project.urls]
+Homepage = "https://github.com/aashirvad08/omnifold-gsoc-eval"
+Repository = "https://github.com/aashirvad08/omnifold-gsoc-eval"
+
+[project.scripts]
+omnifold-publication = "omnifold_publication.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["omnifold_publication*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["omnifold_publication"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

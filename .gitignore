@@ -1,0 +1,34 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Virtualenvs ---
+.venv/
+venv/
+env/
+
+# --- Tool caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- OS ---
+.DS_Store
+
+# --- Data (multi-GB inputs; fetched separately, never committed) ---
+data/*
+!data/.gitkeep
+
+# --- Generated output (regenerable; never committed) ---
+artifacts/
+
+# --- Large data formats, wherever they land ---
+*.h5
+*.hdf5
+*.parquet

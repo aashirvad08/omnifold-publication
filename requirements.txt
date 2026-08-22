@@ -1,0 +1,11 @@
+numpy
+pandas
+tables
+pyarrow
+pyyaml
+pydantic>=2
+matplotlib
+scipy
+vector
+pytest
+hepdata-validator
