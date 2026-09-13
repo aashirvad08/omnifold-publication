@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 import re
+import warnings
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -13,7 +14,6 @@ import yaml
 from .derived_observables import DERIVED_OBSERVABLES, compute_derived_observables
 from .exceptions import PackageWriteError
 from .selection import selection_columns
-
 
 DEFAULT_INPUT_PATH = Path("data/multifold.h5")
 DEFAULT_METADATA_SOURCE = Path("spec/metadata.yaml")
@@ -196,6 +196,22 @@ def _discover_systematic_families(columns: list[str]) -> dict[str, dict[str, Any
             }
             remaining = [column for column in remaining if column not in members]
     if remaining:
+        # Everything unmatched is *assumed* to be a systematic variation.
+        # That assumption is right for the reference release and can be
+        # badly wrong elsewhere: a prior/target/scale-factor column under an
+        # unfamiliar name becomes a 1-sigma nuisance parameter and inflates
+        # the total. It is a guess, so it is announced rather than silent.
+        warnings.warn(
+            "write_package could not match these weight columns to a known "
+            f"systematic group, so they were grouped as 'syst_other' and "
+            f"will be combined in quadrature as systematic variations: "
+            f"{', '.join(sorted(remaining))}. If any of them is not a "
+            "systematic variation (a prior or target weight, say), rename it "
+            "or declare the families explicitly with "
+            "write_package_from_declaration().",
+            UserWarning,
+            stacklevel=3,
+        )
         families["syst_other"] = {
             "type": "systematic",
             "combination": "quadrature_difference_from_nominal",
@@ -492,6 +508,20 @@ def write_package(
                 selected_columns.append(step_spec["column"])
 
     selected_columns = list(dict.fromkeys(selected_columns))
+
+    missing = [column for column in selected_columns if column not in df.columns]
+    if missing:
+        raise PackageWriteError(
+            "Cannot write the package; these columns are not in the source "
+            f"file: {', '.join(missing)}.\n"
+            "write_package expects the reference release's column names "
+            f"({NOMINAL_WEIGHT_COLUMN!r} for the nominal weight, "
+            f"{BASE_WEIGHT_COLUMN!r} for the base MC weight). Map your own "
+            "names onto them with column_rename={'your_col': 'expected_col'}, "
+            "or declare your schema directly with "
+            "write_package_from_declaration(), which needs no base MC weight "
+            "and infers nothing."
+        )
 
     package_df = df.loc[:, selected_columns]
     package_event_count = int(len(package_df))

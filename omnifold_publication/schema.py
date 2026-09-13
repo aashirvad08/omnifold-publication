@@ -86,7 +86,11 @@ class Weights(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     nominal: str = Field(...)
-    base_mc_weight: str = Field(...)
+    # Optional: a sample carrying a single weight column (an alternative
+    # generator, a background sample) has no separate prior weight, and
+    # inventing one to satisfy the layout is worse than declaring its
+    # absence. Only the "reweighting_factor" convention actually needs it.
+    base_mc_weight: str | None = Field(default=None)
     nominal_convention: str | None = Field(default=None)
     replica: str | None = Field(default=None)
     families: dict[str, PackagedWeightFamily] | None = Field(default=None)

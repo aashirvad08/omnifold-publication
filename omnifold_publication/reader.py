@@ -515,6 +515,13 @@ class OmniFoldPackage:
             return df[nominal_column].to_numpy(dtype=float)
 
         base_column = weights.base_mc_weight
+        if base_column is None:
+            raise PackageReadError(
+                "Cannot compute final weights: nominal_convention is "
+                "'reweighting_factor', which multiplies the nominal column by "
+                "the base MC weight, but this package declares no "
+                "weights.base_mc_weight."
+            )
         df = self._load_final_weight_columns([base_column, nominal_column])
         return (
             df[base_column].to_numpy(dtype=float)

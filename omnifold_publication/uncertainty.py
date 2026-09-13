@@ -30,6 +30,18 @@ from .exceptions import PackageReadError
 
 MEDIAN_STD_ERROR_FACTOR = 1.253
 
+# The combination recipes implemented by combine_family/family_covariance.
+# Declared families are checked against this at write time so a typo is
+# caught there rather than when someone computes an uncertainty.
+COMBINATIONS = frozenset(
+    {
+        "quadrature_difference_from_nominal",
+        "standard_deviation",
+        "median_standard_error",
+        "paired_relative_difference",
+    }
+)
+
 
 def histogram_matrix(
     values: np.ndarray,
@@ -126,7 +138,11 @@ def combine_family(
         return paired_relative_difference(
             nominal_hist, variation_hists[0], reference_hist
         )
-    raise PackageReadError(f"Unknown weight-family combination: {combination!r}")
+    known = ", ".join(sorted(COMBINATIONS))
+    raise PackageReadError(
+        f"Unknown weight-family combination: {combination!r}; "
+        f"expected one of: {known}."
+    )
 
 
 def total_in_quadrature(components: dict[str, np.ndarray]) -> np.ndarray:

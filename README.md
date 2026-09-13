@@ -326,6 +326,11 @@ Notes:
   `dataset.assumptions` automatically — a subset scales `sum(w)` and quietly
   breaks any absolute cross-section comparison, so the package states it.
 
+**If your columns are not named like the ATLAS release**, use
+`write_package_from_declaration` instead — it infers nothing, needs no base MC
+weight, and reports a bad declaration in full before writing. See
+[Path B](#path-b--declare-your-schema).
+
 **Multi-dataset builder.** For a nominal plus variation samples in one call:
 
 ```python
@@ -774,11 +779,30 @@ hand-write it, and there are two ways in.** The distinction that matters:
 - The **reader and the uncertainty stack are fully generic.** Nothing there
   infers meaning from column names; they dispatch on the *declared* family
   `combination`. Any column naming works.
-- The **writer's auto-discovery is convention-based**, keyed to the ATLAS
-  release's column names. That is the only place a foreign dataset meets
-  friction.
+- **`write_package` discovers families from column-name conventions** — the
+  ATLAS release's conventions. Convenient for files shaped like that release,
+  and the wrong tool for anything else.
+- **`write_package_from_declaration` infers nothing.** You state the
+  observables, weights and families; undeclared columns are not packaged. This
+  is the supported path for a foreign schema.
 
-### Path A — convert with `write_package` (recommended)
+Pick by how your columns are named, not by how much work each looks like:
+
+| Your situation | Use |
+|---|---|
+| Columns follow the ATLAS release's spellings, or a handful of renames gets you there | **Path A** — `write_package` |
+| Columns are named anything else | **Path B** — `write_package_from_declaration` |
+| All you have is a published HEPData record | **Path C** — `load_package("hepdata:<id>")` |
+
+> **One trap worth knowing about Path A.** Any `weights_*` column the discovery
+> rules do not recognise is *assumed to be a systematic* and folded into
+> `syst_other`. For the reference release that is correct. For a foreign file a
+> prior, target or scale-factor column then becomes a 1σ nuisance parameter and
+> silently inflates your published uncertainty. `write_package` now emits a
+> `UserWarning` naming every column it grouped that way — read it. If any of
+> them is not a systematic, rename it or use Path B.
+
+### Path A — convert with `write_package`
 
 Use `column_rename` to align names and `metadata_source` to supply your own
 observable descriptions and official binning:
@@ -814,57 +838,97 @@ What the writer expects:
 | Paired data-driven term from exactly `weights_dd` + `target_dd` | Path B |
 | Iteration weights matched as `weights_step1_iter_3` / `weights_iter_3_step1` | optional; absent in the release files |
 
-### Path B — hand-author the metadata
+### Path B — declare your schema
 
-For an arbitrary schema, write `metadata.yaml` yourself against `schema.py` and
-put `events.parquet` next to it. Declare families with your own column names and
-one of the four combinations, and everything downstream works unchanged:
+`write_package_from_declaration` takes your columns as they are. Nothing is
+inferred, so nothing can be misread:
 
-```yaml
-format_version: '0.2'
-observables:
-  - name: pT_ll
-    description: Transverse momentum of the dilepton system
-    units: GeV
-    binning:
-      official: [200.0, 230.0, 300.0, 450.0, 600.0, 1000.0]
-      provenance: my analysis note, table 3
-weights:
-  nominal: w_unfolded
-  base_mc_weight: w_prior
-  nominal_convention: reweighting_factor
-  families:
-    my_detector_np:
-      type: systematic
-      combination: quadrature_difference_from_nominal
-      columns: [w_jes_up, w_jer_up, w_muon_up]
-    my_bootstrap:
-      type: bootstrap
-      combination: standard_deviation
-      columns: [w_bs_000, w_bs_001, w_bs_002]
-    my_unfolding_pair:
-      type: paired
-      combination: paired_relative_difference
-      columns: [w_alt]
-      reference_column: w_ref
-normalization:
-  mode: absolute
-  weight_units: fb
-  nominal_weight_column: w_unfolded
-  base_weight_column: w_prior
-publication:
-  format: parquet
-  events_file: events.parquet
-  event_count: 123456
+```python
+from omnifold_publication import write_package_from_declaration
+
+write_package_from_declaration(
+    events="my_unfolding_output.parquet",     # or a DataFrame, or .h5
+    output_dir="artifacts/mine",
+    observables={
+        "truth_pt_dilepton": {                # your name, kept as-is
+            "units": "GeV",
+            "description": "Dilepton transverse momentum",
+            "bins": [200, 230, 300, 450, 600, 1000],
+            "binning_provenance": "my analysis note, table 3",
+        },
+        "truth_pt_jet1": {
+            "units": "GeV",
+            "bins": [5, 50, 100, 300],
+            "selection": "truth_pt_jet1 > 5",
+        },
+    },
+    weights={
+        "nominal": "w_unfolded",
+        "base_mc_weight": "w_prior",          # or None - see below
+        "nominal_convention": "reweighting_factor",
+    },
+    families={
+        "detector": {
+            "type": "systematic",
+            "combination": "quadrature_difference_from_nominal",
+            "columns": ["w_jes_up", "w_jer_up", "w_muon_up"],
+        },
+        "mc_stat": {
+            "type": "bootstrap",
+            "combination": "standard_deviation",
+            "columns": ["w_bs_000", "w_bs_001", "w_bs_002"],
+        },
+        "unfolding": {
+            "type": "paired",
+            "combination": "paired_relative_difference",
+            "columns": ["w_alt"],
+            "reference_column": "w_ref",
+        },
+    },
+    dataset={"name": "my-measurement", "method": "MyUnfolding"},
+    event_id_column=None,                     # name it to declare column alignment
+)
 ```
 
-Validate the metadata before you rely on it:
+Everything downstream — histograms, per-family breakdowns, covariance, closure
+tests, HEPData export — then works unchanged, because all of it dispatches on
+the declared `combination`.
+
+Four things this path gives you that Path A cannot:
+
+- **No base MC weight required.** `base_mc_weight=None` is legitimate: a sample
+  carrying a single weight column (an alternative generator, a background
+  sample) has no separate prior weight, and inventing one to satisfy the layout
+  is worse than declaring its absence. Only `nominal_convention:
+  reweighting_factor` actually needs it, and that is checked at write time.
+- **Undeclared columns are not packaged**, so no column can be mistaken for a
+  systematic.
+- **Declared `bins` become the *official* binning**, so closure tests and
+  HEPData export — which refuse to guess — accept them immediately.
+- **Every problem at once, before anything is written.** A bad declaration
+  reports the lot in one run:
+
+```
+PackageWriteError: Cannot write the package; the declaration does not match
+the event table:
+  - weights.nominal column 'not_a_column' is not in the event table.
+  - observable 'ghost': selection references column 'phantom', which is not in
+    the event table.
+  - family 'typo': unknown combination 'quadrature_difference'; expected one
+    of: median_standard_error, paired_relative_difference,
+    quadrature_difference_from_nominal, standard_deviation.
+  - family 'pair': combination 'paired_relative_difference' expects exactly
+    one column, got 2.
+```
+
+If you would rather write `metadata.yaml` by hand, the schema is
+`omnifold_publication/schema.py` and you can check a draft with:
 
 ```python
 import yaml
 from omnifold_publication.schema import validate_metadata
 
-validate_metadata(yaml.safe_load(open("metadata.yaml")))   # raises with field-level errors
+validate_metadata(yaml.safe_load(open("metadata.yaml")))   # field-level errors
 ```
 
 ### Path C — come in already binned
@@ -972,6 +1036,7 @@ ruff check .
 omnifold_publication/        the package
 ├── reader.py                OmniFoldPackage, load_package
 ├── writer.py                write_package + weight-family discovery
+├── declaration.py           write_package_from_declaration (infers nothing)
 ├── schema.py                pydantic metadata model
 ├── validation.py            validate_package, checksum/alignment/normalisation checks
 ├── histogram.py             compute_weighted_histogram, HistogramResult

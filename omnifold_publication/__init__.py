@@ -13,6 +13,7 @@ from .derived_observables import (
     DERIVED_OBSERVABLES,
     compute_derived_observables,
 )
+from .declaration import write_package_from_declaration
 from .exceptions import (
     ManifestNotFoundError,
     OmniFoldPublicationError,
@@ -85,6 +86,7 @@ __all__ = [
     "validate_package",
     "write_manifest",
     "write_package",
+    "write_package_from_declaration",
 ]
 
 
