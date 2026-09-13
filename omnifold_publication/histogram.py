@@ -90,9 +90,40 @@ def compute_weighted_histogram(
     }
 
 
+# Optional per-source uncertainty components, in the order they are
+# combined into the total. Which ones a given result carries depends on
+# what its source could compute; ``total_uncertainty`` and
+# ``stat_uncertainty`` are always present, whatever the source.
+OPTIONAL_COMPONENTS = ("sys_uncertainty", "replica_uncertainty")
+
+
 @dataclass
 class HistogramResult:
-    """Structured weighted histogram and its uncertainty components."""
+    """Structured weighted histogram and its uncertainty components.
+
+    **Guaranteed fields.** ``hist``, ``edges``, ``centers``,
+    ``stat_uncertainty`` and ``total_uncertainty`` are always arrays, for
+    every source. Code that needs one number per bin can read
+    ``total_uncertainty`` without checking where the result came from.
+
+    **Optional components.** ``sys_uncertainty`` and
+    ``replica_uncertainty`` are filled only when the source can compute
+    them, so they differ by construction path:
+
+    - :meth:`OmniFoldPackage.histogram` — one sample, so no cross-sample
+      systematic and no replica band: both are ``None`` and
+      ``total_uncertainty`` equals ``stat_uncertainty``.
+    - :meth:`OmniFoldAnalysis.histogram` — fills ``sys_uncertainty`` when
+      ``systematic_variations`` are requested and ``replica_uncertainty``
+      when the nominal package carries replicas.
+    - :meth:`HEPDataPackage.histogram` — a published record carries a
+      total error, so ``total_uncertainty`` is the published total and
+      ``stat_uncertainty`` is filled only when the table publishes a
+      labelled breakdown.
+
+    Rather than testing each field, ask :meth:`components` for the ones
+    this result actually carries.
+    """
 
     hist: np.ndarray
     edges: np.ndarray
@@ -100,26 +131,74 @@ class HistogramResult:
     stat_uncertainty: np.ndarray
     sys_uncertainty: np.ndarray | None = None
     replica_uncertainty: np.ndarray | None = None
-    # combined uncertainty, for sources (e.g. HEPData tables) that publish
-    # a single total error rather than a component breakdown
+    # Always populated: passed in by sources that publish a single total
+    # (e.g. HEPData tables), otherwise derived in __post_init__ from the
+    # components present.
     total_uncertainty: np.ndarray | None = None
 
+    def __post_init__(self) -> None:
+        """Derive ``total_uncertainty`` when the source did not supply one."""
+
+        if self.total_uncertainty is not None:
+            self.total_uncertainty = np.asarray(
+                self.total_uncertainty, dtype=float
+            )
+            return
+        squared = np.asarray(self.stat_uncertainty, dtype=float) ** 2
+        for name in OPTIONAL_COMPONENTS:
+            component = getattr(self, name)
+            if component is not None:
+                squared = squared + np.asarray(component, dtype=float) ** 2
+        self.total_uncertainty = np.sqrt(squared)
+
+    def components(self) -> dict[str, np.ndarray]:
+        """The uncertainty components this result actually carries.
+
+        Always includes ``stat_uncertainty``; includes the optional
+        components only when populated. ``total_uncertainty`` is excluded
+        — it is the quadrature sum of these, not a peer of them.
+        """
+
+        present: dict[str, np.ndarray] = {
+            "stat_uncertainty": np.asarray(self.stat_uncertainty, dtype=float)
+        }
+        for name in OPTIONAL_COMPONENTS:
+            component = getattr(self, name)
+            if component is not None:
+                present[name] = np.asarray(component, dtype=float)
+        return present
+
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible representation, omitting absent fields."""
+        """Return a JSON-compatible representation.
+
+        The guaranteed fields are always present; the optional components
+        appear only when this result carries them.
+        """
 
         result: dict[str, Any] = {
             "hist": self.hist.tolist(),
             "edges": self.edges.tolist(),
             "centers": self.centers.tolist(),
-            "stat_uncertainty": self.stat_uncertainty.tolist(),
+            "stat_uncertainty": np.asarray(
+                self.stat_uncertainty, dtype=float
+            ).tolist(),
         }
         if self.sys_uncertainty is not None:
-            result["sys_uncertainty"] = self.sys_uncertainty.tolist()
+            result["sys_uncertainty"] = np.asarray(
+                self.sys_uncertainty, dtype=float
+            ).tolist()
         if self.replica_uncertainty is not None:
-            result["replica_uncertainty"] = self.replica_uncertainty.tolist()
-        if self.total_uncertainty is not None:
-            result["total_uncertainty"] = self.total_uncertainty.tolist()
+            result["replica_uncertainty"] = np.asarray(
+                self.replica_uncertainty, dtype=float
+            ).tolist()
+        result["total_uncertainty"] = np.asarray(
+            self.total_uncertainty, dtype=float
+        ).tolist()
         return result
 
 
-__all__ = ["HistogramResult", "compute_weighted_histogram"]
+__all__ = [
+    "OPTIONAL_COMPONENTS",
+    "HistogramResult",
+    "compute_weighted_histogram",
+]

@@ -370,7 +370,8 @@ pkg.get_family_weights("ensemble")          # (n_columns, n_events) matrix
 
 pkg.get_weights()                           # nominal
 pkg.get_weights("final")                    # the canonical per-event measurement weight
-pkg.get_weights(variation="weights_dd")
+pkg.get_weights("weights_dd")               # any declared variation or family column
+pkg.get_weights(iteration=0, step="step1")  # a declared iteration weight
 pkg.get_uncertainty("replica")              # per-event |variation - nominal|
                                             # (single weight variations only, not family names)
 pkg.nominal_convention()                    # "includes_mc_weight" | "reweighting_factor"
@@ -407,8 +408,18 @@ result = pkg.histogram("pT_ll", bins=[200, 300, 600, 1000])
 result = pkg.histogram("pT_ll", variation="weights_dd", bins=30)
 
 result.hist, result.edges, result.centers, result.stat_uncertainty
-result.to_dict()                                   # JSON-ready, omits absent fields
+result.total_uncertainty                           # always present, whatever the source
+result.components()                                # only the components this result carries
+result.to_dict()                                   # JSON-ready
 ```
+
+`hist`, `edges`, `centers`, `stat_uncertainty` and `total_uncertainty` are
+**always** arrays, for every source — so code that needs one error per bin can
+read `total_uncertainty` without knowing which call produced the result.
+`sys_uncertainty` and `replica_uncertainty` are filled only when the source can
+compute them (an analysis with variation samples or replicas; see section 7),
+and `components()` returns exactly the ones present rather than making you test
+each field for `None`.
 
 The standalone primitive, if you want it without a package:
 
@@ -448,16 +459,16 @@ a dozen families:
 
 ```python
 import numpy as np
-from omnifold_publication.cross_comparison import _component_group
+from omnifold_publication import group_components
 
-groups = {}
-for name, values in brk["components"].items():
-    g = _component_group(pkg, name)                # statistical / systematic / data_driven
-    groups[g] = groups.get(g, 0.0) + np.asarray(values) ** 2
-
-for g, sq in groups.items():
-    print(g, np.round(100 * np.sqrt(sq) / brk["nominal"], 2), "%")
+for group, values in group_components(pkg, brk["components"]).items():
+    print(group, np.round(100 * values / brk["nominal"], 2), "%")
+    # statistical / systematic / data_driven / other
 ```
+
+`group_components` sums each group in quadrature; `component_group(pkg, name)`
+classifies one component on its own. Both resolve the group from the package's
+**declared** family `type`, never from the component name.
 
 ### 5. Covariance and correlation
 
@@ -553,6 +564,7 @@ Histograms with bands, and breakdowns extended by two-point terms:
 ```python
 h = ana.histogram("pT_ll", systematic_variations=["sherpa", "nonDY"])
 h.hist, h.stat_uncertainty, h.sys_uncertainty, h.replica_uncertainty
+h.total_uncertainty                                 # the three, in quadrature
 
 brk = ana.uncertainty_breakdown("pT_ll")                     # adds two_point_<sample>
 brk = ana.uncertainty_breakdown("pT_ll", include_two_point=False)

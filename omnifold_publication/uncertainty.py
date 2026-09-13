@@ -136,6 +136,63 @@ def total_in_quadrature(components: dict[str, np.ndarray]) -> np.ndarray:
     return np.sqrt((stacked**2).sum(axis=0))
 
 
+# Coarse grouping of uncertainty components, derived from each package's
+# own declared weight-family "type" -- never inferred from the component
+# name string. "sample_stat" is the one component with no declared family:
+# it is the baseline sqrt(sum w^2) statistical term computed here in
+# uncertainty.py, so it is statistical by construction.
+FAMILY_GROUPS: dict[str, str] = {
+    "bootstrap": "statistical",
+    "ensemble": "statistical",
+    "systematic": "systematic",
+    "paired": "data_driven",
+}
+STAT_COMPONENT = "sample_stat"
+
+
+def component_group(package: Any, name: str) -> str:
+    """Coarse group of one uncertainty component of ``package``.
+
+    Returns "statistical", "systematic", "data_driven", or "other",
+    resolved from the component's *declared* family type. A component with
+    no declared family (including an analysis-level ``two_point_*`` term)
+    groups as "other" rather than raising: grouping is presentation only,
+    and an unrecognised component must never hide the numbers.
+    """
+
+    if name == STAT_COMPONENT:
+        return "statistical"
+    try:
+        declared = package.weight_family(name).get("type")
+    except PackageReadError:
+        return "other"
+    return FAMILY_GROUPS.get(declared, "other")
+
+
+def group_components(
+    package: Any,
+    components: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    """Sum a breakdown's components in quadrature within each group.
+
+    ``components`` is the ``"components"`` mapping of
+    :func:`uncertainty_breakdown`. The result maps each group present to
+    its combined per-bin uncertainty, so a dozen declared families reduce
+    to the three or four bands worth plotting::
+
+        brk = pkg.uncertainty_breakdown("pT_ll")
+        for group, values in group_components(pkg, brk["components"]).items():
+            print(group, 100 * values / brk["nominal"], "%")
+    """
+
+    grouped: dict[str, np.ndarray] = {}
+    for name, values in components.items():
+        group = component_group(package, name)
+        squared = np.asarray(values, dtype=float) ** 2
+        grouped[group] = grouped.get(group, 0.0) + squared
+    return {group: np.sqrt(squared) for group, squared in grouped.items()}
+
+
 def smooth_uncertainty(
     uncert: np.ndarray,
     bin_centers: np.ndarray,

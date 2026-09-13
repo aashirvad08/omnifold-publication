@@ -34,6 +34,10 @@ from .reader import (
     load_metadata,
     load_package,
 )
+from .uncertainty import (
+    component_group,
+    group_components,
+)
 from .validation import (
     closure_test,
     ensure_valid_package,
@@ -64,11 +68,13 @@ __all__ = [
     "PackageWriteError",
     "UnsupportedFormatVersion",
     "closure_test",
+    "component_group",
     "ensure_valid_package",
     "export_comparison_json",
     "export_histogram_json",
     "get_uncertainty",
     "get_weights",
+    "group_components",
     "list_systematics",
     "load_analysis",
     "load_events",

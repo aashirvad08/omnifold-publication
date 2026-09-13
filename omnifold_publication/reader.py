@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ import yaml
 
 from .exceptions import PackageReadError, UnsupportedFormatVersion
 from .histogram import HistogramResult, compute_weighted_histogram
+from .schema import Observable, PackagedWeightFamily, parse_metadata
 
 
 SUPPORTED_FORMAT_VERSIONS = {"0.1", "0.2"}
@@ -203,11 +205,25 @@ def get_uncertainty(
 
 
 class OmniFoldPackage:
-    """Thin wrapper matching the proposal-facing package API."""
+    """Thin wrapper matching the proposal-facing package API.
+
+    Metadata is parsed once, at construction, into the typed
+    :class:`~omnifold_publication.schema.Metadata` model; every accessor
+    below navigates that model. Malformed metadata is therefore reported
+    once here, naming the offending field, instead of each accessor
+    re-checking the shape of the block it happens to read.
+    """
 
     def __init__(self, package_dir: str | Path):
         self.package_dir = Path(package_dir)
         self._metadata = load_metadata(self.package_dir, enforce_version=True)
+        try:
+            self._model = parse_metadata(self._metadata)
+        except ValueError as exc:
+            raise PackageReadError(
+                f"Package metadata at {self.package_dir} does not match the "
+                f"package schema.\n{exc}"
+            ) from exc
 
     def load_events(self, columns: list[str] | None = None) -> pd.DataFrame:
         """Load event columns from this package."""
@@ -220,37 +236,30 @@ class OmniFoldPackage:
         return list_systematics(self._metadata)
 
     def list_weights(self) -> list[str]:
-        """Return all declared weight variation names."""
+        """Return all declared weight variation names.
 
-        weights = self._metadata.get("weights", {})
-        if not isinstance(weights, dict):
-            return []
-        return [key for key in weights if key not in _NON_VARIATION_KEYS]
+        ``exclude_unset`` keeps this to what the file actually declares —
+        the model's unset defaults are not weights — and preserves
+        declaration order, which ``get_replica_weights`` relies on to
+        build a stable replica matrix.
+        """
+
+        declared = self._model.weights.model_dump(exclude_unset=True)
+        return [key for key in declared if key not in _NON_VARIATION_KEYS]
 
     def list_observables(self) -> list[str]:
         """Return all declared observable names."""
 
-        observables = self._metadata.get("observables", [])
-        if not isinstance(observables, list):
-            return []
-        return [
-            observable["name"]
-            for observable in observables
-            if isinstance(observable, dict) and "name" in observable
-        ]
+        return [observable.name for observable in self._model.observables]
 
     def observable_units(self, name: str) -> str:
         """Return the declared units for an observable, or an empty string."""
 
-        for observable in self._metadata.get("observables", []):
-            if isinstance(observable, dict) and observable.get("name") == name:
-                units = observable.get("units", "")
-                return units if isinstance(units, str) else ""
-        raise PackageReadError(f"Unknown observable: {name}")
+        return self._observable_entry(name).units
 
-    def _observable_entry(self, name: str) -> dict[str, Any]:
-        for observable in self._metadata.get("observables", []):
-            if isinstance(observable, dict) and observable.get("name") == name:
+    def _observable_entry(self, name: str) -> Observable:
+        for observable in self._model.observables:
+            if observable.name == name:
                 return observable
         raise PackageReadError(f"Unknown observable: {name}")
 
@@ -259,33 +268,25 @@ class OmniFoldPackage:
         suggested bins."""
 
         observable = self._observable_entry(name)
-        bins = observable.get("bins")
+        bins = observable.bins
+        if bins is None and observable.binning is not None:
+            bins = observable.binning.official
         if bins is None:
-            binning = observable.get("binning")
-            if isinstance(binning, dict):
-                bins = binning.get("official")
-        if bins is None:
-            bins = observable.get("suggested_bins")
+            bins = observable.suggested_bins
         if bins is None:
             return None
-        if not isinstance(bins, list):
-            raise PackageReadError(f"Bins for observable {name!r} must be a list.")
         return [float(edge) for edge in bins]
 
     def observable_binning_provenance(self, name: str) -> str | None:
         """Provenance of the official binning, if declared."""
 
-        binning = self._observable_entry(name).get("binning")
-        if isinstance(binning, dict):
-            provenance = binning.get("provenance")
-            return provenance if isinstance(provenance, str) else None
-        return None
+        binning = self._observable_entry(name).binning
+        return binning.provenance if binning is not None else None
 
     def observable_selection(self, name: str) -> str | None:
         """Declared event selection for an observable (e.g. 'pT_trackj1 > 5')."""
 
-        selection = self._observable_entry(name).get("selection")
-        return selection if isinstance(selection, str) else None
+        return self._observable_entry(name).selection
 
     def observable_values(self, name: str) -> tuple[np.ndarray, np.ndarray]:
         """Observable values after its declared selection, plus the mask.
@@ -320,36 +321,56 @@ class OmniFoldPackage:
     def summary(self) -> dict[str, Any]:
         """Return a concise summary of the package contents."""
 
-        publication = self._metadata.get("publication", {})
+        publication = self._model.publication
+        checksum = publication.checksum_sha256 if publication is not None else None
         return {
-            "format_version": self._metadata.get("format_version"),
-            "event_count": publication.get("event_count")
-            if isinstance(publication, dict)
-            else None,
+            "format_version": self._model.format_version,
+            "event_count": publication.event_count if publication is not None else None,
             "observables": self.list_observables(),
             "weights": self.list_weights(),
             "systematics": self.list_systematics(),
-            "checksum_sha256": publication.get("checksum_sha256", "not recorded")
-            if isinstance(publication, dict)
-            else "not recorded",
+            "checksum_sha256": checksum if checksum is not None else "not recorded",
         }
 
     def get_weights(
         self,
-        kind: str = "nominal",
-        variation: str | None = None,
+        variation: str = "nominal",
         iteration: int | None = None,
         step: str | None = None,
+        kind: str | None = None,
     ) -> np.ndarray:
-        """Return a declared weight array or the derived final event weights."""
+        """Return a declared weight array or the derived final event weights.
 
-        selection = variation or kind
-        if selection == "final" and iteration is None and step is None:
+        ``variation`` names a metadata-declared weight — "nominal", a
+        declared variation, or any column of a declared weight family —
+        or "final" for the convention-aware measurement weight (see
+        :meth:`nominal_convention`). Pass ``iteration`` and ``step``
+        together to select a declared iteration weight.
+
+        ``kind`` is a deprecated alias for ``variation``, kept so existing
+        callers keep working; it will be removed in a future release.
+        """
+
+        if kind is not None:
+            if variation != "nominal":
+                raise PackageReadError(
+                    "Pass either `variation` or the deprecated `kind`, not "
+                    "both; they name the same thing."
+                )
+            warnings.warn(
+                "OmniFoldPackage.get_weights(kind=...) is deprecated; use "
+                "variation=... instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            variation = kind
+
+        if variation == "final" and iteration is None and step is None:
             return self._final_weights()
 
         column = resolve_weight_column(
             self._metadata,
-            variation=selection,
+            variation=variation,
             iteration=iteration,
             step=step,
         )
@@ -357,7 +378,7 @@ class OmniFoldPackage:
         return get_weights(
             df,
             self._metadata,
-            variation=selection,
+            variation=variation,
             iteration=iteration,
             step=step,
         )
@@ -365,10 +386,9 @@ class OmniFoldPackage:
     def nominal_convention(self) -> str:
         """Return the declared relation between weights_nominal and weight_mc."""
 
-        weights = self._metadata.get("weights", {})
-        if not isinstance(weights, dict):
-            raise PackageReadError("Metadata key 'weights' must be a mapping.")
-        convention = weights.get("nominal_convention", DEFAULT_NOMINAL_CONVENTION)
+        convention = (
+            self._model.weights.nominal_convention or DEFAULT_NOMINAL_CONVENTION
+        )
         if convention not in NOMINAL_CONVENTIONS:
             allowed = ", ".join(sorted(NOMINAL_CONVENTIONS))
             raise PackageReadError(
@@ -377,18 +397,8 @@ class OmniFoldPackage:
             )
         return convention
 
-    def _families(self) -> dict[str, dict[str, Any]]:
-        weights = self._metadata.get("weights", {})
-        if not isinstance(weights, dict):
-            return {}
-        families = weights.get("families", {})
-        if not isinstance(families, dict):
-            return {}
-        return {
-            name: family
-            for name, family in families.items()
-            if isinstance(family, dict)
-        }
+    def _families(self) -> dict[str, PackagedWeightFamily]:
+        return self._model.weights.families or {}
 
     def list_weight_families(self) -> list[str]:
         """Return the names of declared weight families."""
@@ -396,12 +406,18 @@ class OmniFoldPackage:
         return list(self._families())
 
     def weight_family(self, name: str) -> dict[str, Any]:
-        """Return the metadata block of one declared weight family."""
+        """Return the metadata block of one declared weight family.
+
+        Returned as a plain mapping (``type``, ``combination``,
+        ``columns``, ``reference_column``) so callers keep using ``.get()``
+        against a stable public shape; it is produced from the validated
+        model, so every key is guaranteed present and correctly typed.
+        """
 
         families = self._families()
         if name not in families:
             raise PackageReadError(f"Unknown weight family: {name!r}")
-        return families[name]
+        return families[name].model_dump()
 
     def get_family_weights(self, name: str) -> np.ndarray:
         """Return a family's weight columns as a (n_columns, n_events) matrix."""
@@ -457,11 +473,7 @@ class OmniFoldPackage:
     def weight_units(self) -> str | None:
         """Return declared weight units (e.g. "fb"), if recorded."""
 
-        normalization = self._metadata.get("normalization", {})
-        if not isinstance(normalization, dict):
-            return None
-        units = normalization.get("weight_units")
-        return units if isinstance(units, str) else None
+        return self._model.normalization.weight_units
 
     def _load_final_weight_columns(self, columns: list[str]) -> pd.DataFrame:
         required = ", ".join(repr(column) for column in columns)
@@ -490,26 +502,19 @@ class OmniFoldPackage:
         be multiplied by the base MC weight. See spec/weight_formula.md.
         """
 
-        weights = self._metadata.get("weights", {})
-        if not isinstance(weights, dict):
-            raise PackageReadError("Metadata key 'weights' must be a mapping.")
-        if "nominal" not in weights:
-            raise PackageReadError(
-                "Cannot compute final weights; metadata is missing: nominal."
-            )
+        # The schema requires weights.nominal and weights.base_mc_weight, so
+        # a package that reached this point declares both: the missing-field
+        # cases are reported at load time by parse_metadata, with the field
+        # named, rather than being re-checked here.
+        weights = self._model.weights
         convention = self.nominal_convention()
-        nominal_column = _column_from_spec(weights["nominal"])
+        nominal_column = weights.nominal
 
         if convention == "includes_mc_weight":
             df = self._load_final_weight_columns([nominal_column])
             return df[nominal_column].to_numpy(dtype=float)
 
-        if "base_mc_weight" not in weights:
-            raise PackageReadError(
-                "Cannot compute final weights; metadata is missing: "
-                "base_mc_weight."
-            )
-        base_column = _column_from_spec(weights["base_mc_weight"])
+        base_column = weights.base_mc_weight
         df = self._load_final_weight_columns([base_column, nominal_column])
         return (
             df[base_column].to_numpy(dtype=float)

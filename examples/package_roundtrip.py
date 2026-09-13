@@ -34,7 +34,7 @@ def main() -> None:
     bins = np.linspace(0.0, 200.0, 26)
     packaged_result = compute_weighted_histogram(
         packaged_df[observable].to_numpy(),
-        pkg.get_weights(kind="nominal"),
+        pkg.get_weights("nominal"),
         bins=bins,
     )
     direct_result = compute_weighted_histogram(

@@ -7,7 +7,7 @@ Example:
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class PhaseSpace(BaseModel):
@@ -27,9 +27,20 @@ class Binning(BaseModel):
 
 
 class Observable(BaseModel):
+    """One declared observable.
+
+    ``description`` and ``units`` default to empty rather than being
+    required: the reader must be able to open an incomplete package (and
+    ``observable_units`` is documented to return ""), while the writer
+    always emits both, so packages this library produces stay complete.
+    """
+
     name: str = Field(...)
-    description: str = Field(...)
-    units: str = Field(...)
+    description: str = Field(default="")
+    units: str = Field(default="")
+    # Explicit per-observable edges, taking precedence over binning.official.
+    # Legacy spelling, still honoured by observable_bins() and _resolve_bins().
+    bins: list[int | float] | None = Field(default=None)
     suggested_bins: list[int | float] | None = Field(default=None)
     bins_note: str | None = Field(default=None)
     binning: Binning | None = Field(default=None)
@@ -64,6 +75,16 @@ class IterationEntry(BaseModel):
 
 
 class Weights(BaseModel):
+    """Declared weights.
+
+    ``extra="allow"`` is required, not incidental: the writer declares one
+    additional key per packaged replica column (``weights[col] = col``), so
+    the default extra="ignore" would silently drop every replica from the
+    parsed model while leaving it in the file.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
     nominal: str = Field(...)
     base_mc_weight: str = Field(...)
     nominal_convention: str | None = Field(default=None)
@@ -176,11 +197,18 @@ class Metadata(BaseModel):
     usage_notes: list[str] = Field(default_factory=list)
 
 
-def validate_metadata(metadata: dict) -> None:
-    """Validate metadata and raise a clear ``ValueError`` on schema errors."""
+def parse_metadata(metadata: dict) -> Metadata:
+    """Validate metadata and return the typed :class:`Metadata` model.
+
+    This is the single parse point for the package: readers navigate the
+    returned model instead of re-walking the raw mapping with per-field
+    type checks, so a malformed block is reported once, here, with the
+    offending field named — rather than surfacing later as an
+    ``AttributeError`` or a silently empty result.
+    """
 
     try:
-        Metadata(**metadata)
+        return Metadata(**metadata)
     except ValidationError as exc:
         errors = []
         for error in exc.errors():
@@ -190,3 +218,9 @@ def validate_metadata(metadata: dict) -> None:
             f"- {error}" for error in errors
         )
         raise ValueError(message) from exc
+
+
+def validate_metadata(metadata: dict) -> None:
+    """Validate metadata and raise a clear ``ValueError`` on schema errors."""
+
+    parse_metadata(metadata)

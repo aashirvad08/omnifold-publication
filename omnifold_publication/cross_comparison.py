@@ -38,6 +38,7 @@ import numpy as np
 
 from .exceptions import PackageReadError
 from .reader import OmniFoldPackage
+from .uncertainty import component_group
 
 # Correlation models for the ratio band. Only "none" is implemented; the
 # others are named so the choice is explicit and discoverable, but must not
@@ -75,36 +76,16 @@ def _relative(total: np.ndarray, hist: np.ndarray) -> np.ndarray:
         return np.where(hist != 0.0, total / np.abs(hist), np.nan)
 
 
-# Coarse grouping for the per-component uncertainty comparison view, derived
-# from each package's own declared weight-family "type" — never inferred
-# from the component name string. "sample_stat" is the one component with no
-# declared family: it is the baseline sqrt(sum w^2) statistical term computed
-# directly in uncertainty.py, so it is treated as statistical by convention.
-_FAMILY_GROUP = {
-    "bootstrap": "statistical",
-    "ensemble": "statistical",
-    "systematic": "systematic",
-    "paired": "data_driven",
-}
+# Presentation colours for the groups resolved by
+# :func:`omnifold_publication.uncertainty.component_group`, which derives
+# each group from the package's own declared weight-family "type" — never
+# from the component name string.
 _GROUP_COLOR = {
     "statistical": "#2c7fb8",
     "systematic": "#d6604d",
     "data_driven": "#7570b3",
     "other": "#888888",
 }
-
-
-def _component_group(package: OmniFoldPackage, name: str) -> str:
-    if name == "sample_stat":
-        return "statistical"
-    try:
-        declared = package.weight_family(name).get("type")
-    except PackageReadError:
-        # A breakdown component with no declared family: group it as "other"
-        # rather than failing the whole plot. Grouping is presentation only,
-        # so an unrecognised component must never hide the numbers.
-        return "other"
-    return _FAMILY_GROUP.get(declared, "other")
 
 
 class CrossPublicationComparison:
@@ -287,7 +268,7 @@ class CrossPublicationComparison:
             total = np.asarray(side["uncertainty"]["total"], dtype=float)
             components = side["uncertainty"]["components"]
 
-            component_group: dict[str, str] = {}
+            component_groups: dict[str, str] = {}
             components_relative_pct: dict[str, list[float]] = {}
             group_sq: dict[str, np.ndarray] = {}
             for name, values in components.items():
@@ -295,8 +276,8 @@ class CrossPublicationComparison:
                 components_relative_pct[name] = (
                     100.0 * _relative(values_arr, hist)
                 ).tolist()
-                group = _component_group(package, name)
-                component_group[name] = group
+                group = component_group(package, name)
+                component_groups[name] = group
                 group_sq[group] = group_sq.get(
                     group, np.zeros_like(values_arr)
                 ) + values_arr**2
@@ -311,7 +292,7 @@ class CrossPublicationComparison:
                     "label": side["label"],
                     "total_relative_pct": (100.0 * _relative(total, hist)).tolist(),
                     "components_relative_pct": components_relative_pct,
-                    "component_group": component_group,
+                    "component_group": component_groups,
                     "group_relative_pct": group_relative_pct,
                 }
             )
@@ -433,7 +414,7 @@ class CrossPublicationComparison:
                 side["uncertainty"]["components"].items(),
                 key=lambda kv: -np.sum(kv[1]),
             ):
-                group = _component_group(package, name)
+                group = component_group(package, name)
                 rel = 100.0 * _relative(np.asarray(values, dtype=float), hist)
                 all_component_vals.append(rel)
                 ax_comp.stairs(

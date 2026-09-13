@@ -11,7 +11,7 @@ import pandas as pd
 from .exceptions import PackageReadError, PackageValidationError
 from .histogram import HistogramResult, compute_weighted_histogram
 from .manifest import list_manifest_variations, load_manifest
-from .reader import OmniFoldPackage, load_package
+from .reader import OmniFoldPackage, load_package, resolve_weight_column
 from .uncertainty import (
     correlation_matrix,
     ensemble_median_standard_error,
@@ -82,27 +82,45 @@ class OmniFoldAnalysis:
         package = self._package_for_variation(variation)
         return package.load_events(columns=columns)
 
+    def _resolve_variation(self, variation: str) -> tuple[OmniFoldPackage, str]:
+        """Resolve a variation name to the (package, weight) it declares.
+
+        Exactly three declared sources, tried in order:
+
+        1. ``"nominal"`` / ``"final"`` — the nominal package's own weights.
+        2. A sample named by the manifest — that package's nominal weights.
+        3. A weight variation declared by the nominal package's metadata,
+           resolved through :func:`resolve_weight_column`.
+
+        Names are never pattern-matched or prefix-guessed into a column:
+        an undeclared name raises, rather than silently resolving to
+        whatever column happens to exist under a guessed spelling. This is
+        the same rule the uncertainty stack follows — dispatch on what the
+        metadata declares, never on what a name looks like.
+        """
+
+        if variation in {"nominal", "final"}:
+            return self.nominal_package, variation
+        if variation in self._packages:
+            return self._packages[variation], "nominal"
+        try:
+            resolve_weight_column(
+                self.nominal_package.metadata(), variation=variation
+            )
+        except PackageReadError as exc:
+            samples = ", ".join(sorted(self._packages)) or "none"
+            raise PackageReadError(
+                f"Unknown analysis variation {variation!r}: it is neither a "
+                f"manifest sample ({samples}) nor a weight variation "
+                f"declared by the nominal package's metadata."
+            ) from exc
+        return self.nominal_package, variation
+
     def get_weights(self, variation: str = "nominal") -> np.ndarray:
         """Get weights for any declared variation."""
 
-        if variation in {"nominal", "final"}:
-            return self.nominal_package.get_weights(variation)
-
-        if variation in self._packages:
-            return self._packages[variation].get_weights("nominal")
-
-        nominal_weights = self.nominal_package.list_weights()
-        if variation in nominal_weights:
-            return self.nominal_package.get_weights(variation)
-
-        column_name = f"weights_{variation}"
-        if column_name in nominal_weights:
-            return self.nominal_package.get_weights(column_name)
-
-        try:
-            return self.nominal_package.get_weights(variation)
-        except PackageReadError:
-            raise PackageReadError(f"Unknown analysis variation: {variation}")
+        package, selection = self._resolve_variation(variation)
+        return package.get_weights(selection)
 
     def list_variations(self) -> list[str]:
         """List all available variations."""
@@ -354,23 +372,9 @@ class OmniFoldAnalysis:
         return HistogramComparison(self, observable=observable, bins=bins)
 
     def _package_for_variation(self, variation: str) -> OmniFoldPackage:
-        if variation in {"nominal", "final"}:
-            return self.nominal_package
-        if variation in self._packages:
-            return self._packages[variation]
-        if variation in self.nominal_package.list_weights():
-            return self.nominal_package
-        if f"weights_{variation}" in self.nominal_package.list_weights():
-            return self.nominal_package
-        from .reader import resolve_weight_column
+        """The package a variation's events come from (see _resolve_variation)."""
 
-        try:
-            resolve_weight_column(
-                self.nominal_package.metadata(), variation=variation
-            )
-        except PackageReadError:
-            raise PackageReadError(f"Unknown analysis variation: {variation}")
-        return self.nominal_package
+        return self._resolve_variation(variation)[0]
 
 
 def load_analysis(manifest_dir: str | Path) -> OmniFoldAnalysis:
